@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free Local OCR WebAR (No Key)</title>
+    
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    
+    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
+    
+    <style>
+        /* ปุ่มกดสแกน */
+        .action-btn {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999;
+            padding: 15px 30px;
+            background-color: #4cd137;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+        }
+        /* หน้าต่างแสดงสถานะและข้อความ */
+        #result-overlay {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            width: 80%;
+            display: block;
+            text-align: center;
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+<body style="margin: 0; overflow: hidden;">
+
+    <div id="result-overlay">ระบบพร้อมใช้งาน (ส่องกล้องแล้วกดปุ่มด้านล่าง)</div>
+
+    <button class="action-btn" onclick="scanHandwritingLocal()">สแกนอ่านข้อความ</button>
+
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+        <a-marker preset="hiro">
+            <a-entity id="ar-text" position="0 0.5 0" rotation="-90 0 0"
+                      text="value: Waiting for scan...; color: #4cd137; align: center; width: 4; font: https://cdn.aframe.io/fonts/DejaVu-sdf.json;">
+            </a-entity>
+        </a-marker>
+        <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+        async function scanHandwritingLocal() {
+            const overlay = document.getElementById('result-overlay');
+            overlay.innerText = "กำลังดึงภาพจากกล้อง...";
+
+            // 1. ดึงภาพปัจจุบันจากกล้อง WebAR
+            const video = document.querySelector('video');
+            if (!video) {
+                overlay.innerText = "ไม่พบกล้องในระบบ";
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            
+            // เพิ่มความคมชัดภาพเล็กน้อยเพื่อให้ AI ตัวเล็กอ่านง่ายขึ้น
+            ctx.filter = 'contrast(1.2) brightness(1.1)';
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            overlay.innerText = "AI กำลังประมวลผลข้อความบนเครื่องของคุณ...";
+
+            // 2. สั่งให้ AI (Tesseract) ประมวลผลจากภาพแคนวาสโดยตรง
+            // 'tha+eng' หมายถึงให้ตรวจจับทั้งภาษาไทยและภาษาอังกฤษพร้อมกัน
+            Tesseract.recognize(
+                canvas,
+                'tha+eng', 
+                { logger: m => {
+                    if(m.status === 'recognizing text') {
+                        overlay.innerText = `กำลังอ่าน: ${Math.floor(m.progress * 100)}%`;
+                    }
+                }}
+            ).then(({ data: { text } }) => {
+                // ทำความสะอาดข้อความที่ได้
+                const cleanText = text.trim() !== "" ? text : "ไม่พบข้อความที่ชัดเจน";
+
+                // 3. แสดงผลลัพธ์บนหน้าจอ 2D
+                overlay.innerText = "ข้อความที่อ่านได้: \n" + cleanText;
+
+                // 4. อัปเดตข้อความในโลก AR ซ้อนทับบนแผ่นมาร์กเกอร์
+                const arTextEntity = document.getElementById('ar-text');
+                arTextEntity.setAttribute('text', `value: ${cleanText}; color: #ffffff; align: center; width: 4;`);
+            }).catch(err => {
+                console.error(err);
+                overlay.innerText = "เกิดข้อผิดพลาดในการประมวลผลของ AI";
+            });
+        }
+    </script>
+</body>
+</html>
